@@ -103,15 +103,21 @@ object Application extends Controller {
           val total = (System.currentTimeMillis() - start) / 1000
           val secs = total % 60
           val minutes = total / 60
-          val diff = minutes + " minutes " + secs + " seconds "
-          val msg = "Total time: " + diff + "\n" + "Main User: " + user.login + " token: " + user.token +"\n"
+          val diff = total
+          val msg = "Total time: " + diff + " seconds\n" + "Main User: " + user.login + " token: " + user.token + "\n"
           Logger.info(msg)
 
-          val fw = new FileWriter("db_fill_results.txt", true)
+          val fw = new FileWriter("db_fill_users.txt", true)
           try {
             fw.write(msg)
           }
           finally fw.close()
+
+          val fw2 = new FileWriter("db_fill_times.txt", true)
+          try {
+            fw2.write(msg)
+          }
+          finally fw2.close()
           Ok(msg)
         })
       }
