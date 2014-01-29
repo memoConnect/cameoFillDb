@@ -100,9 +100,13 @@ object Application extends Controller {
             Future.sequence(seq)
           }
         }.map(r => {
-          val diff = (System.currentTimeMillis() - start) / (1000 * 60)
-          val msg = "Total time: " + diff + " minutes\n" + "Main User: " + user.login + " token: " + user.token +"\n"
+          val total = (System.currentTimeMillis() - start) / 1000
+          val secs = total % 60
+          val minutes = total / 60
+          val diff = minutes + " minutes " + secs + " seconds "
+          val msg = "Total time: " + diff + "\n" + "Main User: " + user.login + " token: " + user.token +"\n"
           Logger.info(msg)
+
           val fw = new FileWriter("db_fill_results.txt", true)
           try {
             fw.write(msg)
