@@ -18,8 +18,28 @@ object Application extends Controller {
   val url = "https://dev.cameo.io/api/v1"
   val messagesPerConversation = 1000
   val maxMessageSize = 1000
+  val numberOfRepetitions = 1000
 
-  def index = Action.async {
+  def index = Action {
+
+    Future(multipleBatches(numberOfRepetitions))
+    Ok("running - see console for details")
+
+  }
+
+  def multipleBatches(repetitions: Int) = {
+
+    Seq.range(0, repetitions).seq.map {
+      n => {
+        Logger.debug("Starting repitition number: " + n + " Total: " + numberOfRepetitions)
+        Await.result(oneBatch(n), 10 minutes)
+      }
+
+    }
+
+  }
+
+  def oneBatch(repetition: Int): Future[Boolean] = {
 
     val start = System.currentTimeMillis()
 
@@ -103,22 +123,22 @@ object Application extends Controller {
           val total = (System.currentTimeMillis() - start) / 1000
           val secs = total % 60
           val minutes = total / 60
-          val diff = total
-          val msg = "Total time: " + diff + " seconds\n" + "Main User: " + user.login + " token: " + user.token + "\n"
+          val msg = "Total time: " + minutes + "minutes " + secs + " seconds\n" + "Main User: " + user.login + " token: " + user.token + "\n"
           Logger.info(msg)
 
           val fw = new FileWriter("db_fill_users.txt", true)
           try {
-            fw.write(msg)
+            fw.write(user.login + ";password;" + user.token + "\n")
           }
           finally fw.close()
 
           val fw2 = new FileWriter("db_fill_times.txt", true)
           try {
-            fw2.write(msg)
+            fw2.write(repetition + ";" + total + "\n")
           }
           finally fw2.close()
-          Ok(msg)
+
+          true
         })
       }
     }
@@ -188,19 +208,21 @@ object Application extends Controller {
       }
     }
 
+    val tokens2: Seq[String] = tokens ++ tokens
+
     // add messages to conversation sequentially
     c.map {
       case None => Logger.error("ConversationID expected"); false
       case Some(cid) => {
         // how many messages per user?
-        val n = messageNum / tokens.size
+        val n = messageNum / tokens2.size
         val seq: Seq[Boolean] = Seq.range(0, n).seq.flatMap {
           i =>
-            if (i % 100 == 0) {
-              Logger.info(i * tokens.size + " Messages in Conversation " + num)
+            if (i % 50 == 0) {
+              Logger.info(i * tokens2.size  + " Messages in Conversation " + num)
             }
 
-            tokens.map {
+            tokens2.map {
               t =>
                 val message = Json.obj("messageBody" -> (i + " :" + randomMessageBody))
                 Await.result(postRequest("/conversation/" + cid + "/message", message, t), 1 minutes).isDefined
