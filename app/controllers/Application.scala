@@ -162,7 +162,7 @@ object Application extends Controller {
 
         // get token
         val auth = new sun.misc.BASE64Encoder().encode((login + ":" + password).getBytes)
-        WS.url(url + "/identity/" + identity + "/token").withHeaders(("Authorization", auth)).get().map {
+        WS.url(url + "/token").withHeaders(("Authorization", auth)).get().map {
           res =>
             val token = (Json.parse(res.body) \ "data" \ "token").as[String]
             new User(token, identity, login)
