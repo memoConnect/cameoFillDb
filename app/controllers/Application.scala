@@ -16,15 +16,15 @@ object Application extends Controller {
 
   val password = "password"
   val url = "https://dev.cameo.io/api/v1"
+//  val url = "http://localhost:9000/api/v1"
   val messagesPerConversation = 1000
   val maxMessageSize = 1000
-  val numberOfRepetitions = 1000
+  val numberOfRepetitions = 270
+  val numberOfContacts = 100
 
   def index = Action {
-
     Future(multipleBatches(numberOfRepetitions))
     Ok("running - see console for details")
-
   }
 
   def multipleBatches(repetitions: Int) = {
@@ -74,7 +74,7 @@ object Application extends Controller {
 
         // add 100 random contacts
         Logger.info("STARTING: Adding random Contacts ")
-        val ranConRes: Future[Boolean] = Future(Seq.range(0, 100).seq.map {
+        val ranConRes: Future[Boolean] = Future(Seq.range(0, numberOfContacts).seq.map {
           case n if n < 20 => Await.result(addContact(user.token, None, Seq("group1"), Some("12341234"), Some("asdfasdfsaf")), 1 minute)
           case n if n < 40 => Await.result(addContact(user.token, None, Seq("group2"), Some("12341234"), Some("asdfasdfsaf")), 1 minute)
           case n => Await.result(addContact(user.token, None, Seq(), Some("12341234"), Some("asdfasdfsaf")), 1 minute)
@@ -151,8 +151,8 @@ object Application extends Controller {
     val user = Json.obj(
       "loginName" -> login,
       "password" -> password,
-      "phoneNumber" -> "123456",
-      "email" -> "dbfill@cameo.io"
+      "phoneNumber" -> "+491744560277",
+      "email" -> "dbfill@bjrm.de"
     )
 
     postRequest("/account", user, "").flatMap {
