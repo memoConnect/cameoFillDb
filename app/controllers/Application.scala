@@ -14,16 +14,20 @@ case class User(token: String, identity: String, login: String)
 
 object Application extends Controller {
 
-  val password = "password"
-  val url = "https://dev.cameo.io/api/v1"
+  val password = "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"
+
+//  val password = "password"
+  // sha256 of "password"
+    val url = "https://dev.cameo.io/api/v1"
 //  val url = "http://localhost:9000/api/v1"
   val messagesPerConversation = 1000
-  val maxMessageSize = 1000
-  val numberOfRepetitions = 270
+  val maxMessageSize = 500
+  val numberOfRepetitions = 200
   val numberOfContacts = 100
 
   def index = Action {
-    Future(multipleBatches(numberOfRepetitions))
+//    addUser()
+        Future(multipleBatches(numberOfRepetitions))
     Ok("running - see console for details")
   }
 
@@ -31,7 +35,7 @@ object Application extends Controller {
 
     Seq.range(0, repetitions).seq.map {
       n => {
-        Logger.debug("Starting repitition number: " + n + " Total: " + numberOfRepetitions)
+        Logger.debug("Starting repetition number: " + n + " Total: " + numberOfRepetitions)
         Await.result(oneBatch(n), 10 minutes)
       }
 
@@ -98,22 +102,22 @@ object Application extends Controller {
         Future.sequence(otherUsers).flatMap {
           others => {
             val seq = Seq.range(0, 10).map {
-              case n if n <= 2 => createConversation(Seq(user.token, others(1).token), messagesPerConversation, n).map(b => if (b) {
+              case n if n <= 2 => createConversation(Seq(user, others(1)), messagesPerConversation, n).map(b => if (b) {
                 cFinish(n)
               })
-              case n if n == 3 => createConversation(Seq(user.token, others(0).token, others(1).token), messagesPerConversation, n).map(b => if (b) {
+              case n if n == 3 => createConversation(Seq(user, others(0), others(1)), messagesPerConversation, n).map(b => if (b) {
                 cFinish(n)
               })
-              case n if n == 4 => createConversation(Seq(user.token, others(2).token, others(3).token), messagesPerConversation, n).map(b => if (b) {
+              case n if n == 4 => createConversation(Seq(user, others(2), others(3)), messagesPerConversation, n).map(b => if (b) {
                 cFinish(n)
               })
-              case n if n == 5 => createConversation(Seq(user.token, others(0).token, others(2).token), messagesPerConversation, n).map(b => if (b) {
+              case n if n == 5 => createConversation(Seq(user, others(0), others(2)), messagesPerConversation, n).map(b => if (b) {
                 cFinish(n)
               })
-              case n if n <= 7 => createConversation(Seq(user.token, others(3).token), messagesPerConversation, n).map(b => if (b) {
+              case n if n <= 7 => createConversation(Seq(user, others(3)), messagesPerConversation, n).map(b => if (b) {
                 cFinish(n)
               })
-              case n => createConversation(Seq(user.token, others(0).token, others(1).token, others(2).token, others(3).token), messagesPerConversation, n).map(b => if (b) {
+              case n => createConversation(Seq(user, others(0), others(1), others(2), others(3)), messagesPerConversation, n).map(b => if (b) {
                 cFinish(n)
               })
             }
@@ -128,7 +132,7 @@ object Application extends Controller {
 
           val fw = new FileWriter("db_fill_users.txt", true)
           try {
-            fw.write(user.login + ";password;" + user.token + "\n")
+            fw.write(user.login + ";password;" + user.identity + ";" + user.token + "\n")
           }
           finally fw.close()
 
@@ -148,27 +152,43 @@ object Application extends Controller {
   def addUser(): Future[User] = {
 
     val login = randomString(8)
-    val user = Json.obj(
-      "loginName" -> login,
-      "password" -> password,
-      "phoneNumber" -> "+491744560277",
-      "email" -> "dbfill@bjrm.de"
-    )
 
-    postRequest("/account", user, "").flatMap {
-      case None => Future(new User("fail", "fail", login))
+    // get reservation secret
+    postRequest("/account/check", Json.obj("loginName" -> login), "").flatMap {
+      case None => Future(new User("fail", "fail", "fail"))
       case Some(res) => {
-        val identity = (res \ "data" \ "identities")(0).as[String]
+        val reservationSecret = (res \ "data" \ "reservationSecret").as[String]
+        val user = Json.obj(
+          "loginName" -> login,
+          "password" -> password,
+          "phoneNumber" -> "+491744560277",
+          "email" -> "dbfill@bjrm.de",
+          "reservationSecret" -> reservationSecret
+        )
 
-        // get token
-        val auth = new sun.misc.BASE64Encoder().encode((login + ":" + password).getBytes)
-        WS.url(url + "/token").withHeaders(("Authorization", auth)).get().map {
-          res =>
-            val token = (Json.parse(res.body) \ "data" \ "token").as[String]
-            new User(token, identity, login)
+        postRequest("/account", user, "").flatMap {
+          case None => Future(new User("fail", "fail", login))
+          case Some(res) => {
+            val identityJs = (res \ "data" \ "identities")(0).as[JsObject]
+            val identity = (identityJs \ "id").as[String]
+
+            // get token
+            val auth = new sun.misc.BASE64Encoder().encode((login + ":" + password).getBytes).replace("\n","")
+              val authPath = url + "/token"
+            WS.url(authPath).withHeaders(("Authorization", auth)).get().map {
+              res => {
+                if (res.status != 200) {
+                  Logger.debug("error:" + res.body)
+                  new User("fail", "fail", "fail")
+                } else {
+                  val token = (Json.parse(res.body) \ "data" \ "token").as[String]
+                  new User(token, identity, login)
+                }
+              }
+            }
+          }
         }
       }
-
     }
   }
 
@@ -187,28 +207,27 @@ object Application extends Controller {
     postRequest("/contact", identity ++ groupsJs, token).map(_.isDefined)
   }
 
-  def createConversation(tokens: Seq[String], messageNum: Int, num: Int): Future[Boolean] = {
+  def createConversation(users: Seq[User], messageNum: Int, num: Int): Future[Boolean] = {
 
     val con = Json.obj("subject" -> ("some 1337 subject " + randomString(5)))
 
     // create and add recipients
-    val c: Future[Option[String]] = tokens.headOption match {
+    val c: Future[Option[String]] = users.headOption match {
       case None => Future(None)
-      case Some(t: String) => {
-        postRequest("/conversation", con, t).map {
+      case Some(u: User) =>
+        postRequest("/conversation", con, u.token).map {
           case None => None
-          case Some(js) => {
+          case Some(js) =>
             val cid = (js \ "data" \ "id").as[String]
             // add others as recipients to conversation
-            val re = Json.obj("recipients" -> tokens.tail)
-            postRequest("/conversation/" + cid + "/recipient", re, t)
+            val re = Json.obj("recipients" -> users.tail.map{_.identity})
+            postRequest("/conversation/" + cid + "/recipient", re, u.token)
             Some(cid)
-          }
         }
-      }
     }
 
-    val tokens2: Seq[String] = tokens ++ tokens
+    val tokens = users.map{_.token}
+    val tokens2: Seq[String] = tokens
 
     // add messages to conversation sequentially
     c.map {
@@ -219,7 +238,7 @@ object Application extends Controller {
         val seq: Seq[Boolean] = Seq.range(0, n).seq.flatMap {
           i =>
             if (i % 50 == 0) {
-              Logger.info(i * tokens2.size  + " Messages in Conversation " + num)
+              Logger.info(i * tokens2.size + " Messages in Conversation " + num)
             }
 
             tokens2.map {
@@ -238,7 +257,6 @@ object Application extends Controller {
     WS.url(url + path).withQueryString(("token", token)).post(js).map {
       response =>
         if (response.status == 200) {
-          //          Logger.debug("OK: " + path)
           Some(Json.parse(response.body).as[JsObject])
         } else {
           Logger.error("Request failed. Path: " + path + " Response: [" + response.status + "] " + response.body)
@@ -254,8 +272,13 @@ object Application extends Controller {
     Stream.continually(random.nextInt(alphabet.size)).map(alphabet).take(n).mkString
   }
 
+  def randomStringWithSpace(n: Int): String = {
+    def alphabet: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789   "
+    Stream.continually(random.nextInt(alphabet.size)).map(alphabet).take(n).mkString
+  }
+
   def randomMessageBody = {
-    randomString(random.nextInt(maxMessageSize))
+    randomStringWithSpace(random.nextInt(maxMessageSize))
   }
 
   //  Future.sequence(otherUsers).map {
